@@ -74,14 +74,6 @@ func NewGithubAppClient(
 	}, nil
 }
 
-func (githubClient *GithubClient) transport() *http.Transport {
-	return &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: githubClient.InsecureSkipVerify,
-		},
-	}
-}
-
 func (githubClient *GithubClient) createClientWithAuthToken() (*github.Client, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
