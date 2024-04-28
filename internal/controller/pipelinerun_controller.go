@@ -41,12 +41,14 @@ type PipelineRunReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-const ANNOTATION_GITHUB_BASE_URL = "github-status-controller/github-base-url"
-const ANNOTATION_GITHUB_OWNER = "github-status-controller/github-owner"
-const ANNOTATION_GITHUB_REPOSITORY = "github-status-controller/github-repository"
-const ANNOTATION_GITHUB_REVISION_PARAM_NAME = "github-status-controller/github-revision-param-name"
-const ANNOTATION_GITHUB_SECRET_NAME = "github-status-controller/github-secret-name"
-const ANNOTATION_GITHUB_SECRET_KEY = "github-status-controller/github-secret-key"
+const (
+	ANNOTATION_GITHUB_BASE_URL            = "github-status-controller/github-base-url"
+	ANNOTATION_GITHUB_OWNER               = "github-status-controller/github-owner"
+	ANNOTATION_GITHUB_REPOSITORY          = "github-status-controller/github-repository"
+	ANNOTATION_GITHUB_REVISION_PARAM_NAME = "github-status-controller/github-revision-param-name"
+	ANNOTATION_GITHUB_SECRET_NAME         = "github-status-controller/github-secret-name"
+	ANNOTATION_GITHUB_SECRET_KEY          = "github-status-controller/github-secret-key"
+)
 
 var labelSelector = v1.LabelSelector{
 	MatchLabels: map[string]string{
@@ -110,24 +112,24 @@ func (r *PipelineRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	for _, c := range pipelineRun.Status.Conditions {
 		if v1.ConditionStatus(c.Status) == v1.ConditionTrue {
-			err, _ := statusClient.SetStatus("success", "The build is successful", "tekton-ci", "https://rancher.jquad.rocks")
+			err, _ := statusClient.SetStatus(ctx, "success", "The build is successful", "tekton-ci", "https://rancher.jquad.rocks")
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 		} else if v1.ConditionStatus(c.Status) == v1.ConditionFalse {
-			err, _ := statusClient.SetStatus("failure", "The build has failed", "tekton-ci", "https://rancher.jquad.rocks")
+			err, _ := statusClient.SetStatus(ctx, "failure", "The build has failed", "tekton-ci", "https://rancher.jquad.rocks")
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 		} else {
-			err, _ := statusClient.SetStatus("pending", "The build is currently running", "tekton-ci", "https://rancher.jquad.rocks")
+			err, _ := statusClient.SetStatus(ctx, "pending", "The build is currently running", "tekton-ci", "https://rancher.jquad.rocks")
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 		}
 	}
 
-	//fmt.Println("Name:" + pipelineRun.Name)
+	// fmt.Println("Name:" + pipelineRun.Name)
 
 	return ctrl.Result{}, nil
 }
@@ -176,7 +178,6 @@ func Validate(pipelineRun *tektondevv1.PipelineRun) error {
 }
 
 func ValidateSecret(pipelineRun *tektondevv1.PipelineRun, secret core.Secret) error {
-
 	annotations := pipelineRun.GetAnnotations()
 	_, existsGithubSecretName := annotations[ANNOTATION_GITHUB_SECRET_NAME]
 

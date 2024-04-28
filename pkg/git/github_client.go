@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/google/go-github/v42/github"
-	"golang.org/x/oauth2"
+	"github.com/bradleyfalzon/ghinstallation/v2"
+	"github.com/google/go-github/v61/github"
 )
 
 type GithubClient struct {
@@ -30,7 +30,59 @@ func NewGithubClient(baseUrl string, repoOwner string, repoName string, revision
 	}
 }
 
-func (githubClient *GithubClient) SetStatus(ghState, ghDescription, ghContext, ghTargetUrl string) (error, bool) {
+func NewGithubAppClient(
+	baseUrl string,
+	repoOwner string,
+	repoName string,
+	revision string,
+	appId int64,
+	installationId int64,
+	privateKeyFile string,
+	insecureSkipVerify bool,
+) (*GithubClient, error) {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: insecureSkipVerify,
+		},
+	}
+
+	itr, err := ghinstallation.NewKeyFromFile(tr, appId, installationId, privateKeyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := createClient(baseUrl, &http.Client{Transport: itr})
+	if err != nil {
+		return nil, err
+	}
+
+	token, _, err := client.Apps.CreateInstallationToken(
+		context.Background(),
+		installationId,
+		&github.InstallationTokenOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return &GithubClient{
+		BaseUrl:            baseUrl,
+		RepoOwner:          repoOwner,
+		RepoName:           repoName,
+		Revision:           revision,
+		AccessToken:        token.GetToken(),
+		InsecureSkipVerify: insecureSkipVerify,
+	}, nil
+}
+
+func (githubClient *GithubClient) transport() *http.Transport {
+	return &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: githubClient.InsecureSkipVerify,
+		},
+	}
+}
+
+func (githubClient *GithubClient) createClientWithAuthToken() (*github.Client, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
@@ -39,41 +91,24 @@ func (githubClient *GithubClient) SetStatus(ghState, ghDescription, ghContext, g
 		},
 	}
 
-	// create the status
-	status := &github.RepoStatus{
-		State:       github.String(ghState),
-		Description: github.String(ghDescription),
-		Context:     github.String(ghContext),
-		TargetURL:   github.String(ghTargetUrl),
+	client, err := createClient(githubClient.BaseUrl, httpClient)
+	if err != nil {
+		return nil, err
 	}
 
-	// create the client
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: githubClient.AccessToken})
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
-	tc := oauth2.NewClient(ctx, ts)
+	return client.WithAuthToken(githubClient.AccessToken), nil
+}
 
-	parsedUrl, err := url.Parse(githubClient.BaseUrl)
+func createClient(baseUrl string, httpClient *http.Client) (*github.Client, error) {
+	parsedUrl, err := url.Parse(baseUrl)
 	if err != nil {
-		return err, false
+		return nil, err
 	}
 
 	if parsedUrl.Host == "github.com" {
-		client := github.NewClient(tc)
-		_, _, err := client.Repositories.CreateStatus(ctx, githubClient.RepoOwner, githubClient.RepoName, githubClient.Revision, status)
-		if err != nil {
-			return err, false
-		}
-	} else {
-		client, errClient := github.NewEnterpriseClient(githubClient.BaseUrl, "api/v3", tc)
-		if errClient != nil {
-			return errClient, false
-		}
-		_, _, err := client.Repositories.CreateStatus(ctx, githubClient.RepoOwner, githubClient.RepoName, githubClient.Revision, status)
-		if err != nil {
-			return err, false
-		}
+		return github.NewClient(httpClient), nil
 	}
 
-	return nil, true
+	return github.NewClient(httpClient).
+		WithEnterpriseURLs(baseUrl, baseUrl)
 }
